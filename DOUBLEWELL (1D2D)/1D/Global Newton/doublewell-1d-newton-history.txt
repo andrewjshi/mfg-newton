@@ -1,0 +1,39 @@
+======================================================================================================================
+   DOUBLE WELL MFG EXAMPLE (Global Newton)
+======================================================================================================================
+Parameters:
+  xmin = -2.5, xmax = 2.5
+  T    = 1.0, Nx = 500, Nt = 100
+  nu   = 0.1, alpha = 2, kappa = 1.0
+Solver Parameters:
+  NEWTON_MAX_ITER = 20, NEWTON_TOL = 1e-09
+  Continuation: NU_START=0.5, TAU=0.1, GAMMA=0.5, CONT_TOL=0.0001
+Grid Info:
+  dt = 0.010000, dx = 0.010000
+Problem Specific Parameters:
+  tilt = 0.3, well_depth = 2.0, initial_std = 0.6, boundary = periodic
+----------------------------------------------------------------------------------------------------------------------
+First Solve: nu = 0.5000
+      Iter  0 | res = 1.3729e+04 | Solve Time: 1.0143s
+      Iter  1 | res = 3.2630e+03 | Solve Time: 0.9868s
+      Iter  2 | res = 6.4635e+02 | Solve Time: 0.9766s
+      Iter  3 | res = 1.6097e+02 | Solve Time: 0.9573s
+      Iter  4 | res = 2.9257e+01 | Solve Time: 0.9002s
+      Iter  5 | res = 1.8358e+00 | Solve Time: 0.9177s
+      Iter  6 | res = 9.6207e-03 | Solve Time: 0.9223s
+      Iter  7 | res = 2.9374e-07 | Solve Time: 0.8994s
+      Iter  8 | res = 1.0914e-10 (Converged)
+    -> Converged! (res=1.0914e-10) Total for nu=0.5000: 8.8256s
+
+  Attempting nu = 0.1000...
+      Iter  0 | res = 1.3431e+03 | Solve Time: 0.9048s
+      Iter  1 | res = 5.8599e+02 | Solve Time: 0.8391s
+      Iter  2 | res = 3.1672e+01 | Solve Time: 0.9538s
+      Iter  3 | res = 7.5464e-01 | Solve Time: 0.8922s
+      Iter  4 | res = 1.1780e-03 | Solve Time: 0.8700s
+      Iter  5 | res = 1.5181e-08 | Solve Time: 0.9123s
+      Iter  6 | res = 4.7066e-11 (Converged)
+    -> Converged! (res=4.7066e-11) Total for nu=0.1000: 6.3619s
+
+----------------------------------------------------------------------------------------------------------------------
+Total Execution Time: 15.1880 seconds.

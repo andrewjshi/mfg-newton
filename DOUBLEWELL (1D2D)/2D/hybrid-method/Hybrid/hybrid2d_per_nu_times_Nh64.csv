@@ -1,0 +1,12 @@
+phase,nu,method,n_attempts,theta_used,iters,status,time_at_nu,cumulative_time
+1,1.0,NewtonPicard,1,0.8,11,converged,6.6,6.6
+1,0.3,NewtonPicard,1,0.8,11,converged,7.1,13.7
+1,0.1,NewtonPicard,1,0.8,13,converged,8.7,22.4
+1,0.03,NewtonPicard,4,0.5,32,converged,52.0,74.3
+1,0.01,NewtonPicard,3,0.3,136,converged,125.8,200.1
+2,0.003,NewtonPicard,4,,48,stalled,85.3,285.4
+3,0.01,GlobalNewton,1,,5,converged,579.4,864.8
+4,0.003,GlobalNewton,1,,5,converged,604.8,1469.6
+4,0.001,GlobalNewton,1,,4,converged,431.1,1900.7
+4,0.0003,GlobalNewton,1,,4,converged,443.5,2344.2
+4,0.0001,GlobalNewton,1,,4,converged,444.6,2788.8

@@ -1,0 +1,39 @@
+===========================================================================
+ Reference Constant from Screenshot: -1.22579135
+===========================================================================
+Running Adaptive Asymptotic Continuation (Picard)...
+rho=1.00e-01 | Damp=0.50 | Iters=14   | err_u=8.5e-04 | Time=0.02s | lam=1.391239
+rho=4.64e-02 | Damp=0.50 | Iters=0    | err_u=9.1e-04 | Time=0.00s | lam=1.391261
+rho=2.15e-02 | Damp=0.50 | Iters=0    | err_u=9.9e-04 | Time=0.00s | lam=1.391271
+rho=1.00e-02 | Damp=0.50 | Iters=0    | err_u=1.1e-03 | Time=0.00s | lam=1.391277
+rho=4.64e-03 | Damp=0.05 | Iters=0    | err_u=1.1e-03 | Time=0.00s | lam=1.391277
+rho=2.15e-03 | Damp=0.05 | Iters=11   | err_u=1.4e-03 | Time=0.02s | lam=1.391279
+rho=1.00e-03 | Damp=0.05 | Iters=545  | err_u=1.4e-03 | Time=1.56s | lam=0.584344
+rho=4.64e-04 | Damp=0.05 | Iters=160  | err_u=1.3e-03 | Time=0.31s | lam=0.581746
+rho=2.15e-04 | Damp=0.05 | Iters=160  | err_u=1.3e-03 | Time=0.28s | lam=0.580539
+rho=1.00e-04 | Damp=0.05 | Iters=160  | err_u=1.3e-03 | Time=0.26s | lam=0.579979
+
+===========================================================================
+ GROUND TRUTH VERIFICATION
+===========================================================================
+True Discrete Constant (lambda_h) via Energy Integral: 0.54156422
+Difference from Screenshot Reference:                1.7674e+00
+
+==================================================
+ EXPERIMENT 1 RESULTS (FIXED GRID Nx=200, L=4.0)
+==================================================
+Discount (rho)  | max |rho*u - lambda_h|   
+--------------------------------------------------
+1.0e-01         | 8.4968e-01               
+4.6e-02         | 8.4970e-01               
+2.2e-02         | 8.4971e-01               
+1.0e-02         | 8.4971e-01               
+4.6e-03         | 8.4971e-01               
+2.2e-03         | 8.4971e-01               
+1.0e-03         | 5.2040e-02               
+4.6e-04         | 4.4482e-02               
+2.2e-04         | 4.0971e-02               
+1.0e-04         | 3.9341e-02               
+==================================================
+
+Results saved to experiment1_adaptive_picard.txt and experiment1_adaptive_plot.png

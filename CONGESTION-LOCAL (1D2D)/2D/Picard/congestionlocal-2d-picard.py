@@ -1,0 +1,299 @@
+"""Solve the 2D local-congestion MFG with the Picard method."""
+
+import time
+from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import scipy.sparse as sp
+import scipy.sparse.linalg as spla
+
+# ==========================================
+# SECTION 1: PARAMETERS AND GRID DISCRETIZATION
+# ==========================================
+
+# --- Physics Parameters ---
+nu   = 0.01              # Viscosity coefficient
+beta = 1.5               # Congestion exponent
+zeta = 1.0               # Coupling strength
+
+# --- Spatial and Temporal Grid ---
+xmin, xmax = 0.0, 1.0    # Spatial domain boundaries
+ymin, ymax = 0.0, 1.0    # Spatial domain boundaries
+T  = 1.0                 # Total time horizon
+Nx, Ny = 200, 200        # Number of spatial intervals
+Nt = 20                 # Number of temporal intervals
+
+# --- Picard and Newton Iteration Parameters ---
+PICARD_MAX_ITER = 100    # Maximum number of outer HJB-FP coupling iterations
+PICARD_TOL = 1e-6        # Convergence tolerance for the outer Picard loop
+DAMPING = 0.7            # Damping parameter (0 < DAMPING <= 1). 1 corresponds to no damping.
+
+NEWTON_MAX_ITER = 20     # Maximum Newton iterations for the backward HJB solves
+NEWTON_TOL = 1e-9        # Convergence tolerance for the backward Newton solver
+
+# --- Derived Quantities ---
+dt    = T / Nt           # Temporal step size
+Dx    = (xmax - xmin) / Nx # Spatial step size (x)
+Dy    = (ymax - ymin) / Ny # Spatial step size (y)
+num_x = Nx * Ny
+norm_const = np.sqrt(Dx * Dy * dt)
+
+x = np.linspace(xmin, xmax, Nx, endpoint=False) # Computational grid points (Periodic)
+y = np.linspace(ymin, ymax, Ny, endpoint=False) # Computational grid points (Periodic)
+X, Y = np.meshgrid(x, y, indexing='ij')
+
+# --- Saved File Names ---
+HERE = Path(__file__).resolve().parent   # outputs land beside this script
+history_filename = str(HERE / "congestionlocal-2d-picard-history.txt")
+plot_contour_filename = str(HERE / "congestionlocal-2d-picard-contour.png")
+plot_surface_filename = str(HERE / "congestionlocal-2d-picard-surface.png")
+# ==========================================
+# SECTION 2: PHYSICS DEFINITIONS (INCLUDING HAMILTONIAN)
+# ==========================================
+
+# Initial condition m0: Square on [0.375, 0.625]^2
+m0_2d = np.zeros((Nx, Ny))
+mask  = (X >= 0.375) & (X <= 0.625) & (Y >= 0.375) & (Y <= 0.625)
+m0_2d[mask] = 4.0
+m0_2d = m0_2d / (np.sum(m0_2d) * Dx * Dy)
+m0    = m0_2d.flatten()
+
+# Terminal cost: double quadratic well at (0.3, 0.5) and (0.7, 0.5)
+uT_2d = 15.0 * np.minimum((X - 0.3)**2 + (Y - 0.5)**2,
+                           (X - 0.7)**2 + (Y - 0.5)**2)
+uT = uT_2d.flatten()
+
+def compute_f(m_dist):
+    """Coupling/running cost f(x, m) = zeta * m."""
+    return zeta * m_dist
+
+def discrete_Hamiltonian(dpx, dmx, dpy, dmy, m_curr, f_val):
+    """H = (|p_x|^2 + |p_y|^2) / (2*(1+4m)^beta) - zeta*m"""
+    m_safe     = np.maximum(m_curr, 1e-10)
+    cong_coeff = 1.0 / (2.0 * (1.0 + 4.0 * m_safe)**beta)
+    px_sq      = np.minimum(dpx, 0)**2 + np.maximum(dmx, 0)**2
+    py_sq      = np.minimum(dpy, 0)**2 + np.maximum(dmy, 0)**2
+    return cong_coeff * (px_sq + py_sq) - f_val
+
+def dH_dp(p, m_curr):
+    """D_p H = p / (1+4m)^beta"""
+    m_safe     = np.maximum(m_curr, 1e-10)
+    cong_coeff = 1.0 / (2.0 * (1.0 + 4.0 * m_safe)**beta)
+    return 2.0 * cong_coeff * p
+
+# ==========================================
+# SECTION 3: DISCRETE OPERATORS
+# ==========================================
+
+I_1Dx = sp.eye(Nx)
+I_1Dy = sp.eye(Ny)
+I     = sp.eye(num_x)
+
+# 1D Forward/Backward Differences — periodic, x-direction
+data_px = np.array([-np.ones(Nx), np.ones(Nx)])
+D_plus_1Dx = sp.spdiags(data_px, [0, 1], Nx, Nx).tolil()
+D_plus_1Dx[Nx-1, Nx-1] = -1.0
+D_plus_1Dx[Nx-1, 0]    =  1.0
+D_plus_1Dx = D_plus_1Dx.tocsr() / Dx
+
+D_minus_1Dx = sp.spdiags(data_px, [-1, 0], Nx, Nx).tolil()
+D_minus_1Dx[0, 0]    =  1.0
+D_minus_1Dx[0, Nx-1] = -1.0
+D_minus_1Dx = D_minus_1Dx.tocsr() / Dx
+
+# 1D Forward/Backward Differences — periodic, y-direction
+data_py = np.array([-np.ones(Ny), np.ones(Ny)])
+D_plus_1Dy = sp.spdiags(data_py, [0, 1], Ny, Ny).tolil()
+D_plus_1Dy[Ny-1, Ny-1] = -1.0
+D_plus_1Dy[Ny-1, 0]    =  1.0
+D_plus_1Dy = D_plus_1Dy.tocsr() / Dy
+
+D_minus_1Dy = sp.spdiags(data_py, [-1, 0], Ny, Ny).tolil()
+D_minus_1Dy[0, 0]    =  1.0
+D_minus_1Dy[0, Ny-1] = -1.0
+D_minus_1Dy = D_minus_1Dy.tocsr() / Dy
+
+# 2D Kronecker Lift
+D_plus_x  = sp.kron(D_plus_1Dx,  I_1Dy).tocsr()
+D_minus_x = sp.kron(D_minus_1Dx, I_1Dy).tocsr()
+D_plus_y  = sp.kron(I_1Dx, D_plus_1Dy ).tocsr()
+D_minus_y = sp.kron(I_1Dx, D_minus_1Dy).tocsr()
+
+Laplacian = D_plus_x @ D_minus_x + D_plus_y @ D_minus_y
+
+# ==========================================
+# SECTION 4: HJB AND FP SOLVERS
+# ==========================================
+
+def direct_solve(A, b):
+    """Sparse direct solve using SuperLU through SciPy's ``spsolve``."""
+    return spla.spsolve(A.tocsc(), b)
+
+def solve_hjb_backward(M_flow):
+    U      = np.zeros((Nt + 1, num_x))
+    U[Nt]  = uT
+    A_diff = (I - dt * nu * Laplacian).tocsr()
+    total_newton = 0
+
+    for n in range(Nt - 1, -1, -1):
+        u_next = U[n+1]
+        u_curr = u_next.copy()
+        m_curr = M_flow[n+1]
+        f_val  = compute_f(m_curr)
+
+        for _ in range(NEWTON_MAX_ITER):
+            total_newton += 1
+            dpx, dmx = D_plus_x  @ u_curr, D_minus_x @ u_curr
+            dpy, dmy = D_plus_y  @ u_curr, D_minus_y @ u_curr
+            H_total  = discrete_Hamiltonian(dpx, dmx, dpy, dmy, m_curr, f_val)
+            F        = A_diff @ u_curr + dt * H_total - u_next
+
+            if np.linalg.norm(F, np.inf) < NEWTON_TOL:
+                break
+
+            px_min, px_max = np.minimum(dpx, 0), np.maximum(dmx, 0)
+            py_min, py_max = np.minimum(dpy, 0), np.maximum(dmy, 0)
+            dH_dUx = (sp.diags(dH_dp(px_min, m_curr)) @ D_plus_x +
+                      sp.diags(dH_dp(px_max, m_curr)) @ D_minus_x)
+            dH_dUy = (sp.diags(dH_dp(py_min, m_curr)) @ D_plus_y +
+                      sp.diags(dH_dp(py_max, m_curr)) @ D_minus_y)
+            J = A_diff + dt * (dH_dUx + dH_dUy)
+            u_curr -= direct_solve(J, F)
+        U[n] = u_curr
+    return U, total_newton
+
+def solve_fp_forward(U_flow, M_old_flow):
+    M    = np.zeros((Nt + 1, num_x))
+    M[0] = m0
+    for n in range(Nt):
+        m_ref    = M_old_flow[n+1]
+        dpx, dmx = D_plus_x @ U_flow[n], D_minus_x @ U_flow[n]
+        dpy, dmy = D_plus_y @ U_flow[n], D_minus_y @ U_flow[n]
+        J_H = (sp.diags(dH_dp(np.minimum(dpx, 0), m_ref)) @ D_plus_x +
+               sp.diags(dH_dp(np.maximum(dmx, 0), m_ref)) @ D_minus_x +
+               sp.diags(dH_dp(np.minimum(dpy, 0), m_ref)) @ D_plus_y +
+               sp.diags(dH_dp(np.maximum(dmy, 0), m_ref)) @ D_minus_y).tocsr()
+        A        = (I - dt * nu * Laplacian + dt * J_H.transpose()).tocsr()
+        M[n+1]   = direct_solve(A, M[n])
+    return M
+
+# ==========================================
+# SECTION 5: DAMPED PICARD ITERATION
+# ==========================================
+
+start_time_all = time.perf_counter()
+
+with open(history_filename, "w", buffering=1) as f_log:
+    header = (
+        f"{'='*118}\n"
+        f"   LOCAL CONGESTION MFG EXAMPLE 2D (Picard)\n"
+        f"{'='*118}\n"
+        f"Parameters:\n"
+        f"  xmin = {xmin}, xmax = {xmax}, ymin = {ymin}, ymax = {ymax}\n"
+        f"  T    = {T}, Nx = {Nx}, Ny = {Ny}, Nt = {Nt}\n"
+        f"  nu   = {nu}, beta = {beta}, zeta = {zeta}\n"
+        f"Solver Parameters:\n"
+        f"  PICARD_MAX_ITER = {PICARD_MAX_ITER}, PICARD_TOL = {PICARD_TOL}\n"
+        f"  DAMPING = {DAMPING}\n"
+        f"  NEWTON_MAX_ITER = {NEWTON_MAX_ITER}, NEWTON_TOL = {NEWTON_TOL}\n"
+        f"  LINEAR_SOLVER = direct sparse (spsolve/SuperLU)\n"
+        f"Grid Info:\n"
+        f"  dt = {dt:.6f}, dx = {Dx:.6f}, dy = {Dy:.6f}\n"
+        f"Problem Specific Parameters:\n"
+        f"  initial_support = [0.375, 0.625]^2, initial_height = 4.0, boundary = periodic\n"
+        f"  terminal_wells = [(0.3, 0.5), (0.7, 0.5)], terminal_scale = 15.0, congestion_scale = 4.0\n"
+        f"{'-'*118}\n"
+        f"{'Iter':<5} | {'Abs Err U':<12} | {'Rel Err U':<12} | {'Abs Err M':<12} | {'Rel Err M':<12} | {'Newton It':<10} | {'Time (s)':<10}\n"
+        f"{'-'*118}\n"
+    )
+    print(header, end='')
+    f_log.write(header)
+    M_flow      = np.tile(m0, (Nt+1, 1))
+    A_diff_only = (I - dt * nu * Laplacian).tocsr()
+    for n in range(Nt):
+        M_flow[n+1] = direct_solve(A_diff_only, M_flow[n])
+
+    U_flow = np.zeros((Nt + 1, num_x))
+
+    for k in range(1, PICARD_MAX_ITER + 1):
+        t0 = time.perf_counter()
+        U_candidate, n_iters = solve_hjb_backward(M_flow)
+        U_flow_new  = DAMPING * U_candidate  + (1 - DAMPING) * U_flow
+        M_candidate = solve_fp_forward(U_flow_new, M_flow)
+        M_flow_new  = DAMPING * M_candidate  + (1 - DAMPING) * M_flow
+
+        delta_u_norm = np.linalg.norm((U_flow_new - U_flow).ravel())
+        delta_m_norm = np.linalg.norm((M_flow_new - M_flow).ravel())
+        previous_u_norm = np.linalg.norm(U_flow.ravel())
+        previous_m_norm = np.linalg.norm(M_flow.ravel())
+        abs_err_u = delta_u_norm * norm_const
+        rel_err_u = delta_u_norm / previous_u_norm if previous_u_norm > 1e-12 else (0.0 if delta_u_norm <= 1e-12 else 1.0)
+        abs_err_m = delta_m_norm * norm_const
+        rel_err_m = delta_m_norm / previous_m_norm if previous_m_norm > 1e-12 else (0.0 if delta_m_norm <= 1e-12 else 1.0)
+
+        iter_time = time.perf_counter() - t0
+        log_str = (f"{k:<5} | {abs_err_u:.4e}   | {rel_err_u:.4e}   | "
+                   f"{abs_err_m:.4e}   | {rel_err_m:.4e}   | {n_iters:<10} | {iter_time:.4f}")
+        print(log_str)
+        f_log.write(log_str + "\n")
+        U_flow, M_flow = U_flow_new, M_flow_new
+        if rel_err_u < PICARD_TOL and rel_err_m < PICARD_TOL:
+            conv_msg = f"{'-'*118}\nCONVERGED in {k} iterations.\n"
+            print(conv_msg)
+            f_log.write(conv_msg)
+            break
+    else:
+        fail_msg = (f"{'-'*118}\n"
+                    f"FAILED TO CONVERGE WITHIN PICARD_MAX_ITER = {PICARD_MAX_ITER}.\n")
+        print(fail_msg)
+        f_log.write(fail_msg)
+    total_time = time.perf_counter() - start_time_all
+    time_msg = f"Total Execution Time: {total_time:.4f} seconds.\n"
+    print(time_msg)
+    f_log.write(time_msg)
+# ==========================================
+# SECTION 6: VISUALIZATION
+# ==========================================
+
+time_indices = [0, Nt//4, Nt//2, 3*Nt//4, Nt]
+time_labels  = [0.0, T/4, T/2, 3*T/4, T]
+
+fig_2d, axes_2d = plt.subplots(2, 5, figsize=(25, 9))
+for i, (idx, t_val) in enumerate(zip(time_indices, time_labels)):
+    M_snap = M_flow[idx].reshape((Nx, Ny))
+    U_snap = U_flow[idx].reshape((Nx, Ny))
+    im_m = axes_2d[0, i].contourf(X, Y, M_snap, levels=30, cmap='viridis')
+    axes_2d[0, i].set_title(f'Density $(m)$ at t={t_val:.2f}')
+    axes_2d[0, i].set_xlabel('x'); axes_2d[0, i].set_ylabel('y')
+    fig_2d.colorbar(im_m, ax=axes_2d[0, i])
+    im_u = axes_2d[1, i].contourf(X, Y, U_snap, levels=30, cmap='plasma')
+    axes_2d[1, i].set_title(f'Value $(u)$ at t={t_val:.2f}')
+    axes_2d[1, i].set_xlabel('x'); axes_2d[1, i].set_ylabel('y')
+    fig_2d.colorbar(im_u, ax=axes_2d[1, i])
+plt.tight_layout()
+plt.savefig(plot_contour_filename)
+plt.close(fig_2d)
+print(f"Saved: {plot_contour_filename}")
+
+fig_3d = plt.figure(figsize=(25, 10))
+for i, (idx, t_val) in enumerate(zip(time_indices, time_labels)):
+    M_snap = M_flow[idx].reshape((Nx, Ny))
+    U_snap = U_flow[idx].reshape((Nx, Ny))
+    ax_m = fig_3d.add_subplot(2, 5, i + 1, projection='3d')
+    surf_m = ax_m.plot_surface(X, Y, M_snap, cmap='viridis', edgecolor='none', rstride=2, cstride=2, alpha=0.9)
+    ax_m.set_title(f'Density $(m)$ at t={t_val:.2f}')
+    ax_m.set_xlabel('x'); ax_m.set_ylabel('y'); ax_m.set_zlabel('m')
+    ax_m.view_init(elev=30, azim=45)
+    fig_3d.colorbar(surf_m, ax=ax_m, shrink=0.5, aspect=5)
+    ax_u = fig_3d.add_subplot(2, 5, i + 6, projection='3d')
+    surf_u = ax_u.plot_surface(X, Y, U_snap, cmap='plasma', edgecolor='none', rstride=2, cstride=2, alpha=0.9)
+    ax_u.set_title(f'Value $(u)$ at t={t_val:.2f}')
+    ax_u.set_xlabel('x'); ax_u.set_ylabel('y'); ax_u.set_zlabel('u')
+    ax_u.view_init(elev=30, azim=45)
+    fig_3d.colorbar(surf_u, ax=ax_u, shrink=0.5, aspect=5)
+plt.tight_layout()
+plt.savefig(plot_surface_filename)
+print(f"Saved: {plot_surface_filename}")

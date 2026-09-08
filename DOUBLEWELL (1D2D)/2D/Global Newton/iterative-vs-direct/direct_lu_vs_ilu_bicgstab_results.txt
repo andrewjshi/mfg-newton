@@ -1,0 +1,59 @@
+Direct LU versus ILU-preconditioned BiCGStab benchmark for the 2D double-well Global-Newton Jacobian
+Date: 2026-07-31
+
+Problem parameters
+------------------
+Nx = Ny = 50
+Nt = 10
+T = 1.0
+nu = 0.5
+kappa = 1.0
+alpha = 2
+DOFs = 55,000
+Jacobian nonzeros = 455,000
+
+Direct sparse LU (scipy.sparse.linalg.splu)
+------------------------------------------------
+Matrix assembly time: 0.04 s
+Factor nonzeros: 128,928,646
+Fill-in ratio: 283.36x
+Factorization/solve time: 312.429585 s
+Estimated storage for factor values alone: 1.0314 GB
+
+ILU-preconditioned BiCGStab
+---------------------------
+ILU drop tolerance: 1e-5
+ILU fill factor: 10
+BiCGStab relative tolerance: 1e-6
+BiCGStab maximum iterations: 300
+Matrix assembly time: 0.04 s
+ILU factor nonzeros: 4,394,654
+ILU construction time: 3.9003 s
+BiCGStab solve time: 0.310387 s
+BiCGStab iterations: 27
+Achieved relative residual ||J step + F||_2 / ||F||_2: 2.151634e-7
+Solver status: success
+Total ILU construction plus BiCGStab time: 4.210687 s
+
+Comparison
+----------
+Measured speedup, including ILU construction: 74.20x
+The run reproduces the claimed 55,000 DOFs, approximately 128 million
+factor nonzeros, approximately 283x fill-in, and approximately 4 s iterative
+cost. The speedup on this machine is about 74x rather than 90x because the
+direct factorization took 312 s rather than the previously quoted 367 s.
+
+Hardware and software
+---------------------
+MacBook Pro (MacBookPro18,3)
+Apple M1 Pro, 8 cores (6 performance and 2 efficiency)
+16 GB memory
+macOS 26.4.1 arm64
+Python 3.11.5
+NumPy 1.26.0
+SciPy 1.11.3
+
+Commands
+--------
+python3 direct.py
+python3 iterative.py

@@ -1,0 +1,30 @@
+===========================================================================
+ Reference Constant from Screenshot: -1.22579135
+===========================================================================
+Running Gentle Asymptotic Continuation...
+Solved rho = 1.0e-01 | Damping: 0.5 | Iters: 121  | Time: 0.58s | lambda_est: 1.03663821
+Solved rho = 1.0e-02 | Damping: 0.5 | Iters: 76   | Time: 0.31s | lambda_est: 0.62723959
+Solved rho = 5.0e-03 | Damping: 0.5 | Iters: 134  | Time: 0.42s | lambda_est: 0.60329194
+Solved rho = 1.0e-03 | Damping: 0.5 | Iters: 239  | Time: 7.13s | lambda_est: 0.58404253
+Solved rho = 5.0e-04 | Damping: 0.1 | Iters: 604  | Time: 17.50s | lambda_est: 0.58163065
+Solved rho = 2.0e-04 | Damping: 0.1 | Iters: 636  | Time: 16.59s | lambda_est: 0.58018291
+Solved rho = 1.0e-04 | Damping: 0.1 | Iters: 1418 | Time: 29.69s | lambda_est: 0.57970023
+
+===========================================================================
+ GROUND TRUTH VERIFICATION
+===========================================================================
+True Discrete Constant (lambda_h) via Energy Integral: 0.54876331
+Difference from Screenshot Reference:                1.7746e+00
+
+==================================================
+ EXPERIMENT 1 RESULTS (FIXED GRID Nx=200, L=4.0)
+==================================================
+Discount (rho)  | max |rho*u - lambda_h|
+--------------------------------------------------
+1.0e-01         | 1.3600e+00
+1.0e-02         | 1.7023e-01
+1.0e-03         | 4.4500e-02
+1.0e-04         | 3.1859e-02
+==================================================
+
+Results saved to experiment1_results.txt and experiment1_plot.png
